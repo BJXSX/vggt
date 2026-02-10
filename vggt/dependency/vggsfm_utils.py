@@ -95,17 +95,19 @@ def generate_rank_by_dino(
         frame_feat_norm = F.normalize(frame_feat, p=2, dim=1)
         similarity_matrix = torch.mm(frame_feat_norm, frame_feat_norm.transpose(-1, -2))
 
-    distance_matrix = 100 - similarity_matrix.clone()
+    with torch.amp.autocast("cuda", enabled=False):
+        similarity_matrix = similarity_matrix.float()
+        distance_matrix = 100 - similarity_matrix
 
-    # Ignore self-pairing
-    similarity_matrix.fill_diagonal_(-100)
-    similarity_sum = similarity_matrix.sum(dim=1)
+        # Ignore self-pairing
+        similarity_matrix.fill_diagonal_(-100)
+        similarity_sum = similarity_matrix.sum(dim=1)
 
-    # Find the most common frame
-    most_common_frame_index = torch.argmax(similarity_sum).item()
+        # Find the most common frame
+        most_common_frame_index = torch.argmax(similarity_sum).item()
 
-    # Conduct FPS sampling starting from the most common frame
-    fps_idx = farthest_point_sampling(distance_matrix, query_frame_num, most_common_frame_index)
+        # Conduct FPS sampling starting from the most common frame
+        fps_idx = farthest_point_sampling(distance_matrix, query_frame_num, most_common_frame_index)
 
     # Clean up all tensors and models to free memory
     del frame_feat, frame_feat_norm, similarity_matrix, distance_matrix
