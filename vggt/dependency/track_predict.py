@@ -4,7 +4,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-import torch
+import math
 import numpy as np
 from .vggsfm_utils import *
 
@@ -209,16 +209,17 @@ def _forward_on_query(
     fmaps_feed = fmaps_feed[None]  # add batch dimension
 
     all_points_num = images_feed.shape[1] * query_points.shape[1]
+    gpu_count = torch.cuda.device_count()
+    gpu_points_num = math.ceil(all_points_num / gpu_count)
 
-    # Don't need to be scared, this is just chunking to make GPU happy
-    if all_points_num > max_points_num:
-        num_splits = (all_points_num + max_points_num - 1) // max_points_num
-        query_points = torch.chunk(query_points, num_splits, dim=1)
-    else:
+    if gpu_points_num <= max_points_num:
         query_points = [query_points]
+    else:
+        chunk_num = math.ceil(all_points_num / (max_points_num * gpu_count))
+        query_points = torch.chunk(query_points, chunk_num, dim=1)
 
     pred_track, pred_vis, _ = predict_tracks_in_chunks(
-        tracker, images_feed, query_points, fmaps_feed, fine_tracking=fine_tracking
+        tracker, images_feed, query_points, fmaps_feed, fine_tracking=fine_tracking, parallel=gpu_count > 1
     )
 
     pred_track, pred_vis = switch_tensor_order([pred_track, pred_vis], reorder_index, dim=1)
